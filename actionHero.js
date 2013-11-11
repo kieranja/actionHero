@@ -79,27 +79,40 @@ actionHero.prototype.initialize = function(params, callback){
 
   orderedInitializers['_projectInitializers'] = function(next){
     var projectInitializers = {};
-    if(path.resolve(self.api.configData.general.paths.initializer) != path.resolve(__dirname + "/initializers")){
-      var fileSet = fs.readdirSync(path.resolve(self.api.configData.general.paths.initializer)).sort();
-      fileSet.forEach(function(f){
-        var file = path.resolve(self.api.configData.general.paths.initializer + "/" + f);
-        if (file[0] != "."){
-          var initializer = f.split(".")[0];
-          var fileParts = file.split('.');
-          var ext = fileParts[(fileParts.length - 1)];
-          if (ext === 'js') {
-            if(require.cache[require.resolve(file)] !== null){
-              delete require.cache[require.resolve(file)];
-            }
-            self.initalizers[initializer] = require(file)[initializer];
-            projectInitializers[initializer] = function(next){ 
-              self.api.log("running custom initializer: " + initializer, "info");
-              self.initalizers[initializer](self.api, next);
-            };
-          }
-        }
-      });
-    }
+	
+	// Recursively load initializers. Allows us to organise this stuff better.
+	var recursiveSearch = function(dir){
+		if(path.resolve(self.api.configData.general.paths.initializer) != path.resolve(__dirname + "/initializers")){
+			
+			var fileSet = fs.readdirSync(dir).sort();
+			fileSet.forEach(function(f){
+				var file = path.resolve(dir + "/" + f);
+				if (fs.lstatSync(file).isDirectory()) {
+					recursiveSearch(file);
+				}				
+
+				if (file[0] != "."){
+				  var initializer = f.split(".")[0];
+				  var ext = f.split('.')[1];
+				  if (ext === 'js') {
+					if(require.cache[require.resolve(file)] !== null){
+					  delete require.cache[require.resolve(file)];
+					}
+					self.initalizers[initializer] = require(file)[initializer];
+					projectInitializers[initializer] = function(next){ 
+					  self.api.log("running custom initializer: " + initializer, "info");
+					  self.initalizers[initializer](self.api, next);
+					};
+				  }
+				}
+
+			});
+		}
+	};
+
+	// recursive directory
+	recursiveSearch(path.resolve(self.api.configData.general.paths.initializer));
+
 
     projectInitializers['_complete'] = function(){
       process.nextTick(function(){ next(); });
